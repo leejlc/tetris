@@ -27,19 +27,22 @@
 <body>
 
   <div id="tetris">
-    <div id="menu">
-      <p id="start"><a href="javascript:play();">Press Space to Play.</a></p>
-      <p><canvas id="upcoming"></canvas></p>
-      <p>score <span id="score">00000</span></p>
-      <p>rows <span id="rows">0</span></p>
-    </div>
-    <div id="timer" style="color:#fff; font-family:sans-serif; margin-top:5px;">
-    Time left: 15:00
-    </div>
-    <canvas id="canvas">
-      Sorry, this example cannot be run because your browser does not support the &lt;canvas&gt; element
-    </canvas>
+  <div id="menu">
+    <p id="start"><a href="javascript:play();">Press Space to Play.</a></p>
+    <p><canvas id="upcoming"></canvas></p>
+    <p>game <span id="gameNumber" style="color:green;">1</span></p>
+    <p>score <span id="score">00000</span></p>
+    <p>rows <span id="rows">0</span></p>
+
+    <!-- moved timer into #menu and made text black -->
+    <p id="timer" style="color:#000; font-family:sans-serif; margin-top:5px;">
+      Time left: 15:00
+    </p>
   </div>
+
+  <canvas id="canvas">...</canvas>
+</div>
+
 
   <script src="stats.js"></script>
   <script>
@@ -78,10 +81,11 @@
         ctx     = canvas.getContext('2d'),
         ucanvas = get('upcoming'),
         uctx    = ucanvas.getContext('2d'),
-        speed   = { start: 0.6, decrement: 0.005, min: 0.1 }, // how long before piece drops by 1 row (seconds)
+        speed   = { start: 0.5, decrement: 0.01, min: 0.1 }, // how long before piece drops by 1 row (seconds)
         nx      = 10, // width of tetris court (in blocks)
         ny      = 20, // height of tetris court (in blocks)
         nu      = 5;  // width/height of upcoming preview (in blocks)
+
 
     //-------------------------------------------------------------------------
     // game variables (initialized during reset)
@@ -102,6 +106,11 @@
 	// cumulative stats across multiple games in this session
 	var cumulativeScore = 0;
 	var gamesPlayed = 0;
+	var cumulativeLines = 0;
+	var currentGameNumber = 0;
+
+	// show start text only before first game
+	var hasStartedOnce = false;
 
 
     //-------------------------------------------------------------------------
@@ -180,7 +189,7 @@
 
     function run() {
 
-      showStats(); // initialize FPS counter
+      
       addEvents(); // attach keydown and resize events
 
       var last = now = timestamp();
@@ -188,7 +197,7 @@
         now = timestamp();
         update(Math.min(1, (now - last) / 1000.0)); // using requestAnimationFrame have to be able to handle large delta's caused when it 'hibernates' in a background or non-visible tab
         draw();
-        stats.update();
+        
         last = now;
         requestAnimationFrame(frame, canvas);
       }
@@ -243,18 +252,50 @@
     // GAME LOGIC
     //-------------------------------------------------------------------------
 
-    function play() { hide('start'); reset();          playing = true;  }
-    function lose() {
-  // update per‑session cumulative stats
-  if (typeof score !== 'undefined' && score != null) {
-    cumulativeScore += score;
-  }
-  gamesPlayed += 1;
+    function play() {
+	hide('start');
+	reset();
 
-  show('start');
-  setVisualScore();
-  playing = false;
+  if (!timerStarted) {
+    timerStarted = true;
+    startTime = Date.now();
+    updateCountdownDisplay();
+    window.countdownInterval = setInterval(updateCountdownDisplay, 1000);
+    setTimeout(endGameAndRedirect, MAX_TIME);
+  }
+
+	currentGameNumber = 1;
+	setGameNumberDisplay();
+	playing = true;
+	hasStartedOnce = true;
 }
+
+
+   function lose() {
+	// cumulative stats
+	if (typeof score !== 'undefined' && score != null) {
+    	  cumulativeScore += score;
+	}
+	if (typeof rows !== 'undefined' && rows != null) {
+	  cumulativeLines += rows;
+	}
+	gamesPlayed += 1;
+
+	// only show start text before the very first game
+	if (!hasStartedOnce) {
+	    show('start');
+	    playing = false;
+	} else {
+	    // start next game
+	    currentGameNumber += 1;
+	    setGameNumberDisplay();
+	    // auto‑restart without showing the text
+	    reset();
+	    playing = true;
+	}
+}
+
+
 
     function setVisualScore(n)      { vscore = n || score; invalidateScore(); }
     function setScore(n)            { score = n; setVisualScore(n);  }
@@ -269,6 +310,11 @@
     function clearActions()         { actions = []; }
     function setCurrentPiece(piece) { current = piece || randomPiece(); invalidate();     }
     function setNextPiece(piece)    { next    = piece || randomPiece(); invalidateNext(); }
+    function setGameNumberDisplay() { var el = document.getElementById('gameNumber');   if (el) {
+el.textContent = currentGameNumber.toString();
+  }
+}
+
 
     function reset() {
       dt = 0;
@@ -468,7 +514,9 @@
 
   // 15 minutes in milliseconds
   const MAX_TIME = 15 * 60 * 1000;
-  const startTime = Date.now();
+  let startTime = null;
+  let timerStarted = false;
+
 
   // Helper: get a query parameter from this page's URL
   function getQueryParam(name) {
@@ -477,6 +525,15 @@
   }
 
 function updateCountdownDisplay() {
+  const timerElem = document.getElementById('timer');
+  if (!timerElem) return;
+
+  if (!timerStarted || startTime === null) {
+    // before the first game starts
+    timerElem.textContent = 'Time left: 15:00';
+    return;
+  }
+
   const now = Date.now();
   const elapsed = now - startTime;
   const remainingMs = Math.max(0, MAX_TIME - elapsed);
@@ -484,12 +541,9 @@ function updateCountdownDisplay() {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
 
-  const timerElem = document.getElementById('timer');
-  if (timerElem) {
-    const mm = String(minutes).padStart(2, '0');
-    const ss = String(seconds).padStart(2, '0');
-    timerElem.textContent = 'Time left: ' + mm + ':' + ss;
-  }
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+  timerElem.textContent = 'Time left: ' + mm + ':' + ss;
 }
   
 
@@ -522,6 +576,11 @@ function updateCountdownDisplay() {
       ? gamesPlayed
       : 1;
 
+  const finalCumulativeLines =
+    (typeof cumulativeLines !== 'undefined' && cumulativeLines != null)
+      ? cumulativeLines
+      : (typeof rows !== 'undefined' && rows != null ? rows : 0);
+
   const baseReturnUrl = getQueryParam('returnUrl');
 
   if (baseReturnUrl) {
@@ -530,8 +589,10 @@ function updateCountdownDisplay() {
     url.searchParams.set('TetrisScore', finalScore);
     url.searchParams.set('TetrisCumulativeScore', finalCumulativeScore);
     url.searchParams.set('TetrisGamesPlayed', finalGamesPlayed.toString());
+    url.searchParams.set('TetrisCumulativeLines', finalCumulativeLines.toString());
     url.searchParams.set('TetrisDurationMs', durationMs.toString());
     url.searchParams.set('TetrisDone', '1');
+
 
     const participantId = getQueryParam('ParticipantID');
     if (participantId) {
@@ -549,10 +610,6 @@ function updateCountdownDisplay() {
   window.addEventListener('load', function () {
   // initial draw
   updateCountdownDisplay();
-  // update every second
-  window.countdownInterval = setInterval(updateCountdownDisplay, 1000);
-  // hard stop at MAX_TIME
-  setTimeout(endGameAndRedirect, MAX_TIME);
 });
 
 </script>
